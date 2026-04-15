@@ -1,0 +1,75 @@
+# ═══════════════════════════════════════════════════════════════
+# Reusable Deploy Workflow – deploys any app via Helm
+# ═══════════════════════════════════════════════════════════════
+name: "Deploy App"
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+      values-path:
+        required: false
+        type: string
+        default: ""
+        description: "Path to app values.yaml (default: apps/<app-name>/values.yaml)"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  AKS_CLUSTER: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER }} \
+            --overwrite-existing
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      - name: Deploy with Helm
+        run: |
+          VALUES_FILE="${{ inputs.values-path }}"
+          if [ -z "$VALUES_FILE" ]; then
+            VALUES_FILE="apps/${{ inputs.app-name }}/values.yaml"
+          fi
+
+          helm upgrade --install ${{ inputs.app-name }} platform/helm-chart \
+            -f "$VALUES_FILE" \
+            --set image.tag=${{ inputs.image-tag }} \
+            --namespace ${{ inputs.app-name }} \
+            --create-namespace \
+            --wait \
+            --timeout 5m0s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n ${{ inputs.app-name }}
+          kubectl get svc -n ${{ inputs.app-name }}
+          kubectl get httproute -n ${{ inputs.app-name }}

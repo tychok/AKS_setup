@@ -1,0 +1,100 @@
+# ═══════════════════════════════════════════════════════════════
+# Namespace provisioning template
+# ═══════════════════════════════════════════════════════════════
+# Each namespace is an isolation boundary for a team/product.
+# Multiple apps (api, db, worker, etc.) can live in one namespace.
+# All inter-app traffic is DENIED by default.
+# Teams explicitly declare allowed communication in their values.yaml.
+#
+# Usage:
+#   sed 's/{{ NAMESPACE }}/my-team/g; s/{{ TEAM }}/my-team/g' namespace.yaml | kubectl apply -f -
+# ═══════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "{{ NAMESPACE }}"
+  labels:
+    app.kubernetes.io/part-of: aks-platform
+    team: "{{ TEAM }}"
+    # Allow HTTPRoutes to attach to the shared platform Gateway
+    gateway-access: "true"
+    # Block cross-namespace traffic by default
+    network-isolation: "strict"
+---
+# ── Default deny ALL traffic (ingress + egress) ─────────────
+# Every pod starts fully isolated. Helm chart punches holes
+# per-app based on the allowedPeers declaration.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: "{{ NAMESPACE }}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# ── Allow DNS for all pods (required for service discovery) ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: "{{ NAMESPACE }}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ── Resource quotas ──────────────────────────────────────────
+# Tuned for ~100 namespaces on ~30 standard nodes (D4s_v5 = 4 vCPU, 16 GiB)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: namespace-quota
+  namespace: "{{ NAMESPACE }}"
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+    pods: "20"
+    services: "5"
+    persistentvolumeclaims: "5"
+---
+# ── Limit ranges ─────────────────────────────────────────────
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-limits
+  namespace: "{{ NAMESPACE }}"
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "4Gi"
+      min:
+        cpu: "50m"
+        memory: "64Mi"
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: "8Gi"

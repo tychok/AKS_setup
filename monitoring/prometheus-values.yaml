@@ -1,0 +1,95 @@
+# Helm values for kube-prometheus-stack (multi-app platform)
+# Install: helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring -f prometheus-values.yaml
+
+namespaceOverride: monitoring
+
+prometheus:
+  prometheusSpec:
+    retention: 14d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+
+    # Scrape all app namespaces (pods with app.kubernetes.io/name label)
+    additionalScrapeConfigs:
+      - job_name: "business-apps"
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Only scrape pods with the platform label
+          - source_labels:
+              [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+            action: keep
+            regex: aks-platform
+          # Add namespace and app labels
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_team]
+            target_label: team
+
+grafana:
+  adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: monitoring
+  # Pre-provision data sources
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      access: proxy
+      isDefault: false
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+# Platform-wide alerting rules
+additionalPrometheusRulesMap:
+  platform-alerts:
+    groups:
+      - name: app-health
+        rules:
+          - alert: HighPodRestartRate
+            expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is restarting frequently"
+          - alert: HighMemoryUsage
+            expr: |
+              container_memory_working_set_bytes / container_spec_memory_limit_bytes > 0.9
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Container {{ $labels.namespace }}/{{ $labels.container }} memory > 90%"
+          - alert: HighCPUUsage
+            expr: |
+              rate(container_cpu_usage_seconds_total[5m]) / container_spec_cpu_quota * 100000 > 0.85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Container {{ $labels.namespace }}/{{ $labels.container }} CPU > 85%"
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="true"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"

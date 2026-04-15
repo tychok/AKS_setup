@@ -1,0 +1,43 @@
+# Sample API – the example .NET 8 application in src/SampleApi/
+# Deployed into the "sample" namespace (standalone, no peers needed).
+# Deploy: helm upgrade --install sample-api platform/helm-chart \
+#   -f apps/sample-api/values.yaml --namespace sample --create-namespace
+appName: sample-api
+team: platform
+costCenter: "CC-1001"
+
+image:
+  repository: acraksplatformdev.azurecr.io/sample-api
+  tag: latest
+
+containerPort: 8080
+replicaCount: 2
+nodePool: standard
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+healthCheck:
+  path: /healthz/live
+  readinessPath: /healthz/ready
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+gateway:
+  enabled: true
+  host: sample-api.apps.yourdomain.com
+
+# ── Entra ID Workload Identity ───────────────────────────────
+workloadIdentity:
+  enabled: true
+  clientId: "<SET_FROM_TERRAFORM_OUTPUT>"
+
+configMap:
+  enabled: true
+  data:
+    ASPNETCORE_ENVIRONMENT: "Production"

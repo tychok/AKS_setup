@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════
+# Platform Infrastructure & Shared Services Deploy
+# ═══════════════════════════════════════════════════════════════
+name: "Deploy Platform"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "platform/policies/**"
+      - "monitoring/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AKS_CLUSTER: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - run: terraform init
+      - run: terraform plan -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+
+  platform-services:
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER }} \
+            --overwrite-existing
+
+      - name: Install Gatekeeper
+        run: |
+          helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+          helm repo update
+          helm upgrade --install gatekeeper gatekeeper/gatekeeper \
+            --namespace gatekeeper-system --create-namespace \
+            --wait
+
+      - name: Apply policies
+        run: kubectl apply -f platform/policies/
+
+      - name: Install Gateway API CRDs
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+
+      - name: Install ALB Controller (Application Gateway for Containers)
+        run: |
+          IDENTITY_CLIENT_ID=$(az identity show \
+            --name id-alb-controller-${{ secrets.PLATFORM_PREFIX }} \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --query clientId -o tsv)
+
+          helm install alb-controller \
+            oci://mcr.microsoft.com/application-lb/charts/alb-controller \
+            --namespace azure-alb-system --create-namespace \
+            --version 1.3.7 \
+            --set albController.namespace=azure-alb-system \
+            --set albController.podIdentity.clientID="${IDENTITY_CLIENT_ID}" \
+            --wait
+
+      - name: Deploy shared Gateway
+        run: |
+          kubectl create namespace gateway-system --dry-run=client -o yaml | kubectl apply -f -
+          ALB_ID=$(az network alb show \
+            --name alb-${{ secrets.PLATFORM_PREFIX }} \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --query id -o tsv)
+          sed "s|REPLACE_WITH_ALB_RESOURCE_ID|${ALB_ID}|g" \
+            platform/gateway/gateway.yaml | kubectl apply -f -
+
+      - name: Install Prometheus stack
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace monitoring --create-namespace \
+            --values monitoring/prometheus-values.yaml \
+            --wait

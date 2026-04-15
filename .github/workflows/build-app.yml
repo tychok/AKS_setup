@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════
+# Reusable Build Workflow – called by each app's pipeline
+# ═══════════════════════════════════════════════════════════════
+name: "Build App"
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        required: true
+        type: string
+      docker-context:
+        required: true
+        type: string
+        description: "Path to the Dockerfile context (e.g. src/SampleApi)"
+    outputs:
+      image-tag:
+        description: "Short SHA tag of the built image"
+        value: ${{ jobs.build.outputs.image-tag }}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate image tag
+        id: meta
+        run: echo "tag=$(echo $GITHUB_SHA | head -c 7)" >> $GITHUB_OUTPUT
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build & Push Image
+        working-directory: ${{ inputs.docker-context }}
+        run: |
+          IMAGE="${{ env.ACR_NAME }}.azurecr.io/${{ inputs.app-name }}"
+          docker build \
+            -t "${IMAGE}:${{ steps.meta.outputs.tag }}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}" --all-tags

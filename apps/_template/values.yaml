@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════════
+# App Onboarding Template
+# ═══════════════════════════════════════════════════════════════
+# 1. Copy this folder:  cp -r apps/_template apps/<your-app-name>
+# 2. Fill in the values below
+# 3. Deploy into your team's namespace:
+#    helm upgrade --install <your-app-name> platform/helm-chart \
+#      -f apps/<your-app-name>/values.yaml \
+#      --namespace <your-namespace>
+#
+# Multiple apps can share a namespace. Each app is isolated by
+# default — declare networkPolicy.allowEgressTo / allowIngressFrom
+# to let specific apps communicate.
+# ═══════════════════════════════════════════════════════════════
+
+# ── Required ─────────────────────────────────────────────────
+appName: "CHANGE_ME"
+team: "CHANGE_ME"
+
+image:
+  repository: "CHANGE_ME.azurecr.io/CHANGE_ME"
+  tag: "latest"
+
+gateway:
+  enabled: true
+  host: "CHANGE_ME.apps.yourdomain.com"
+
+# ── Entra ID Workload Identity ───────────────────────────────
+# 1. Fill in identity.yaml (same folder) with namespace + secrets
+# 2. cd infra/apps && terraform apply
+# 3. Copy client_id: terraform output -json app_client_ids
+workloadIdentity:
+  enabled: true
+  clientId: "CHANGE_ME"
+  # tenantId: ""  # Optional: defaults to cluster tenant
+
+# ── Optional overrides (defaults from platform/helm-chart/values.yaml) ──
+# replicaCount: 2
+# nodePool: standard          # standard | highmem | compute
+# containerPort: 8080
+#
+# resources:
+#   requests:
+#     cpu: "100m"
+#     memory: "128Mi"
+#   limits:
+#     cpu: "500m"
+#     memory: "256Mi"
+#
+# autoscaling:
+#   enabled: true
+#   minReplicas: 2
+#   maxReplicas: 10
+#   targetCPU: 70
+#
+# configMap:
+#   enabled: true
+#   data:
+#     MY_SETTING: "my-value"
+#
+# keyVaultSecrets:
+#   enabled: true
+#   vaultName: "kv-aks-platform-dev"
+#   secrets:
+#     - name: db-password
+#       key: DbPassword
+
+# ── Network policy (self-service peer communication) ─────────
+# By default this app is fully isolated. Declare peers below.
+#
+# networkPolicy:
+#   enabled: true
+#
+#   # Which apps in THIS namespace can send traffic to me:
+#   allowIngressFrom:
+#     - app: my-api          # app.kubernetes.io/name of the caller
+#       port: 5432           # port on THIS app
+#
+#   # Which apps in THIS namespace I can send traffic to:
+#   allowEgressTo:
+#     - app: my-db           # app.kubernetes.io/name of the target
+#       port: 5432           # port on the TARGET
+#
+#   # External IPs I can reach:
+#   allowExternalEgress:
+#     - cidr: 0.0.0.0/0
+#       port: 443
+#       description: "HTTPS to external APIs"
+#   secrets:
+#     - name: db-password
+#       key: DbPassword

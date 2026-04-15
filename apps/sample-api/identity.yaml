@@ -1,0 +1,4 @@
+# Workload Identity config — read by Terraform (infra/apps/)
+# No Key Vault secrets needed for this app.
+namespace: sample
+key_vault_secrets: []

@@ -1,0 +1,286 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [],
+    "templating": {
+        "list": [
+            {
+                "name": "namespace",
+                "type": "query",
+                "datasource": "Prometheus",
+                "query": "label_values(kube_pod_info{namespace!~\"kube-system|gatekeeper-system|azure-alb-system|gateway-system|monitoring\"}, namespace)",
+                "refresh": 2,
+                "includeAll": true,
+                "multi": true,
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                }
+            },
+            {
+                "name": "team",
+                "type": "query",
+                "datasource": "Prometheus",
+                "query": "label_values(kube_pod_labels{label_team!=\"\"}, label_team)",
+                "refresh": 2,
+                "includeAll": true,
+                "multi": true,
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                }
+            }
+        ]
+    },
+    "panels": [
+        {
+            "title": "Active App Count",
+            "type": "stat",
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 0,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "count(count by (namespace) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\"}))"
+                }
+            ]
+        },
+        {
+            "title": "Total Running Pods",
+            "type": "stat",
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 6,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "count(kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\"})"
+                }
+            ]
+        },
+        {
+            "title": "Total Pod Restarts (1h)",
+            "type": "stat",
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 12,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h]))"
+                }
+            ]
+        },
+        {
+            "title": "Cluster Node Count",
+            "type": "stat",
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 18,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "count(kube_node_info)"
+                }
+            ]
+        },
+        {
+            "title": "Request Rate by App (req/s)",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 4
+            },
+            "targets": [
+                {
+                    "expr": "sum by (namespace) (rate(http_server_request_duration_seconds_count{namespace=~\"$namespace\"}[5m]))",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "Response Latency p95 by App",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 4
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le, namespace) (rate(http_server_request_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "CPU Usage by App",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 12
+            },
+            "targets": [
+                {
+                    "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[5m]))",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "Memory Usage by App",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 12
+            },
+            "targets": [
+                {
+                    "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"})",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "HTTP Error Rate (5xx) by App",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 20
+            },
+            "targets": [
+                {
+                    "expr": "sum by (namespace) (rate(http_server_request_duration_seconds_count{namespace=~\"$namespace\", http_response_status_code=~\"5..\"}[5m]))",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "Pod Restarts by App (1h)",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 20
+            },
+            "targets": [
+                {
+                    "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h]))",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ]
+        },
+        {
+            "title": "Resource Quota Usage (CPU)",
+            "type": "bargauge",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 28
+            },
+            "targets": [
+                {
+                    "expr": "kube_resourcequota{resource=\"requests.cpu\", type=\"used\", namespace=~\"$namespace\"} / kube_resourcequota{resource=\"requests.cpu\", type=\"hard\", namespace=~\"$namespace\"}",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "max": 1,
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.7
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "title": "Resource Quota Usage (Memory)",
+            "type": "bargauge",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 28
+            },
+            "targets": [
+                {
+                    "expr": "kube_resourcequota{resource=\"requests.memory\", type=\"used\", namespace=~\"$namespace\"} / kube_resourcequota{resource=\"requests.memory\", type=\"hard\", namespace=~\"$namespace\"}",
+                    "legendFormat": "{{ namespace }}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "max": 1,
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.7
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ],
+    "schemaVersion": 39,
+    "tags": [
+        "aks",
+        "platform",
+        "multi-app"
+    ],
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "title": "AKS Platform - All Applications",
+    "uid": "aks-platform-overview"
+}

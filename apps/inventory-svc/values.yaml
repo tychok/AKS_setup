@@ -1,0 +1,60 @@
+# ═══════════════════════════════════════════════════════════════
+# Inventory API — lives in the "inventory" namespace alongside
+# inventory-db. Demonstrates self-service peer communication.
+# ═══════════════════════════════════════════════════════════════
+# Deploy both apps into the same namespace:
+#   helm upgrade --install inventory-api platform/helm-chart \
+#     -f apps/inventory-svc/values.yaml -n inventory --create-namespace
+#   helm upgrade --install inventory-db platform/helm-chart \
+#     -f apps/inventory-db/values.yaml -n inventory
+# ═══════════════════════════════════════════════════════════════
+appName: inventory-api
+team: logistics
+costCenter: "CC-2050"
+
+image:
+  repository: acraksplatformdev.azurecr.io/inventory-api
+  tag: latest
+
+containerPort: 8080
+nodePool: highmem
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "1Gi"
+  limits:
+    cpu: "1"
+    memory: "4Gi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPU: 60
+  targetMemory: 75
+
+gateway:
+  enabled: true
+  host: inventory.apps.yourdomain.com
+
+# ── Entra ID Workload Identity ───────────────────────────────
+# Provision with: cd infra/apps && terraform apply
+# Then set clientId from: terraform output inventory_api_client_id
+workloadIdentity:
+  enabled: true
+  clientId: "<SET_FROM_TERRAFORM_OUTPUT>"
+
+keyVaultSecrets:
+  enabled: true
+  vaultName: kv-aks-platform-dev
+  secrets:
+    - name: db-connection-string
+      key: InventoryDbConnectionString
+
+# ── Network: this API can talk to the DB ─────────────────────
+networkPolicy:
+  enabled: true
+  allowEgressTo:
+    - app: inventory-db
+      port: 5432

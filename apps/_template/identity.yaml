@@ -1,0 +1,7 @@
+# Workload Identity config — read by Terraform (infra/apps/)
+# List the Key Vault secret names this app is allowed to read.
+# Run: cd infra/apps && terraform apply
+namespace: CHANGE_ME
+key_vault_secrets: []
+  # - MySecretName
+  # - AnotherSecret

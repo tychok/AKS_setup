@@ -1,0 +1,133 @@
+# ── Application identity ──────────────────────────────────────
+appName: "" # Required: unique app name (e.g. "inventory-svc")
+team: "" # Required: owning team (e.g. "logistics")
+costCenter: "" # Optional: for chargeback
+
+# ── Container image ──────────────────────────────────────────
+image:
+  repository: "" # Required: e.g. "acrplatformdev.azurecr.io/inventory-svc"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# ── Replicas & scaling ───────────────────────────────────────
+replicaCount: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 70
+  targetMemory: 80
+
+# ── Node pool placement ─────────────────────────────────────
+# Options: standard, highmem, compute
+nodePool: standard
+
+# Extra tolerations (auto-set for highmem/compute pools)
+tolerations: []
+
+# ── Container configuration ──────────────────────────────────
+containerPort: 8080
+
+env: []
+#  - name: MY_VAR
+#    value: "my-value"
+
+envFrom: []
+#  - configMapRef:
+#      name: my-config
+
+# ── Resource management ──────────────────────────────────────
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# ── Health probes ────────────────────────────────────────────
+healthCheck:
+  path: /healthz/live
+  readinessPath: /healthz/ready
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# ── Networking ───────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+
+# ── Gateway API (Application Gateway for Containers) ─────────
+# Replaces the legacy Ingress API. Routing is handled by HTTPRoute
+# resources that attach to the shared platform Gateway.
+gateway:
+  enabled: true
+  gatewayName: platform-gateway # Shared gateway name
+  gatewayNamespace: gateway-system # Where the Gateway lives
+  listenerName: https # Routes attach to the HTTPS listener by default
+  host: "" # Required: e.g. "inventory.apps.yourdomain.com"
+  path: /
+  pathType: PathPrefix
+  rateLimitRPS: 50 # 0 to disable rate limiting
+  annotations: {}
+
+# ── Entra ID Workload Identity ────────────────────────────────
+# Each app gets its own Azure Managed Identity. The AKS OIDC issuer
+# federates trust so pods can authenticate to Azure services (Key Vault,
+# SQL, Cosmos DB, Storage, etc.) without any stored credentials.
+#
+# Provision the identity with Terraform (see infra/apps/) and pass
+# the clientId here.
+workloadIdentity:
+  enabled: false
+  clientId: "" # Required when enabled: Managed Identity client ID
+  tenantId: "" # Optional: defaults to cluster tenant
+
+# ── Config & secrets ─────────────────────────────────────────
+configMap:
+  enabled: false
+  data: {}
+
+# Key Vault secrets via CSI driver
+keyVaultSecrets:
+  enabled: false
+  vaultName: ""
+  secrets: []
+  #  - name: db-connection-string
+  #    key: DbConnectionString
+
+# ── Disruption budget ────────────────────────────────────────
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# ── Network policy ───────────────────────────────────────────
+# By default every app is fully isolated (no ingress, no egress
+# beyond DNS). Use the lists below to declare which peers this
+# app is allowed to talk to / receive traffic from.
+# All peers must be in the SAME namespace.
+networkPolicy:
+  enabled: true
+
+  # Apps in this namespace that are allowed to SEND traffic TO this app.
+  # Example: allow "inventory-api" to reach this database on port 5432.
+  allowIngressFrom: []
+  #  - app: inventory-api       # app.kubernetes.io/name of the caller
+  #    port: 5432               # port on THIS app the caller connects to
+  #    protocol: TCP            # optional, defaults to TCP
+
+  # Apps in this namespace that this app is allowed to SEND traffic TO.
+  # Example: allow this API to reach "inventory-db" on port 5432.
+  allowEgressTo: []
+  #  - app: inventory-db        # app.kubernetes.io/name of the target
+  #    port: 5432               # port on the TARGET app
+  #    protocol: TCP            # optional, defaults to TCP
+
+  # External IPs this app may reach (e.g. third-party APIs, SaaS).
+  # Cross-namespace traffic is NOT supported — use this for external only.
+  allowExternalEgress: []
+  #  - cidr: 0.0.0.0/0         # or a specific IP range
+  #    port: 443
+  #    protocol: TCP
+  #    description: "HTTPS to external APIs"

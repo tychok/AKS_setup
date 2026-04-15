@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════
+# Inventory DB (PostgreSQL) — lives in the "inventory" namespace
+# alongside inventory-api.
+# ═══════════════════════════════════════════════════════════════
+# Deploy:
+#   helm upgrade --install inventory-db platform/helm-chart \
+#     -f apps/inventory-db/values.yaml -n inventory
+# ═══════════════════════════════════════════════════════════════
+appName: inventory-db
+team: logistics
+costCenter: "CC-2050"
+
+image:
+  repository: acraksplatformdev.azurecr.io/postgres
+  tag: "16-alpine"
+
+containerPort: 5432
+replicaCount: 1
+nodePool: standard
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "2Gi"
+
+autoscaling:
+  enabled: false
+
+healthCheck:
+  path: /healthz/live # Override if using a TCP probe instead
+  readinessPath: /healthz/ready
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+# DB has no external traffic — traffic only from within the namespace
+gateway:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 5432
+
+# ── Entra ID Workload Identity ───────────────────────────────
+workloadIdentity:
+  enabled: true
+  clientId: "<SET_FROM_TERRAFORM_OUTPUT>"
+
+keyVaultSecrets:
+  enabled: true
+  vaultName: kv-aks-platform-dev
+  secrets:
+    - name: postgres-password
+      key: InventoryDbPassword
+
+# ── Network: only the API can reach this DB ──────────────────
+networkPolicy:
+  enabled: true
+  allowIngressFrom:
+    - app: inventory-api
+      port: 5432

@@ -1,0 +1,59 @@
+# RBAC: allow a team to manage their own namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: namespace-developer
+  namespace: "{{ NAMESPACE }}"
+rules:
+  - apiGroups:
+      [
+        "",
+        "apps",
+        "batch",
+        "autoscaling",
+        "networking.k8s.io",
+        "gateway.networking.k8s.io",
+      ]
+    resources:
+      [
+        "pods",
+        "deployments",
+        "replicasets",
+        "services",
+        "httproutes",
+        "configmaps",
+        "jobs",
+        "cronjobs",
+        "horizontalpodautoscalers",
+        "poddisruptionbudgets",
+      ]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/exec", "pods/portforward"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"] # read-only for secrets
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # Network policies: teams can view but NOT create/modify
+  # (policies are managed via Helm chart values only)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+# Bind to an Azure AD group (replace group object ID)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: namespace-developer-binding
+  namespace: "{{ NAMESPACE }}"
+subjects:
+  - kind: Group
+    name: "{{ AAD_GROUP_OBJECT_ID }}"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: namespace-developer
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,34 @@
+# ═══════════════════════════════════════════════════════════════
+# Example: Full pipeline for a specific app (sample-api)
+# Each app team creates one of these — it just calls the reusable workflows.
+# ═══════════════════════════════════════════════════════════════
+name: "sample-api"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/SampleApi/**"
+      - "apps/sample-api/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/SampleApi/**"
+      - "apps/sample-api/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-app.yml
+    with:
+      app-name: sample-api
+      docker-context: src/SampleApi
+    secrets: inherit
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-app.yml
+    with:
+      app-name: sample-api
+      image-tag: ${{ needs.build.outputs.image-tag }}
+    secrets: inherit

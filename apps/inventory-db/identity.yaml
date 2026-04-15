@@ -1,0 +1,5 @@
+# Workload Identity config — read by Terraform (infra/apps/)
+# Add Key Vault secret names this app is allowed to read.
+namespace: inventory
+key_vault_secrets:
+  - InventoryDbPassword

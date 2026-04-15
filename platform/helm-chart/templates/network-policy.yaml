@@ -1,0 +1,88 @@
+{{- if .Values.networkPolicy.enabled }}
+# ═══════════════════════════════════════════════════════════════
+# Network isolation for {{ include "business-app.name" . }}
+# ═══════════════════════════════════════════════════════════════
+# Default: this app accepts NO inbound traffic and sends NO outbound
+# traffic (beyond DNS, which the namespace default-deny permits).
+# The sections below punch specific holes based on the values.yaml.
+# ═══════════════════════════════════════════════════════════════
+
+# ── Ingress policy ───────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "business-app.name" . }}-ingress
+  labels:
+    {{- include "business-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "business-app.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- if .Values.gateway.enabled }}
+    # Allow from Application Gateway for Containers (ALB Controller)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: azure-alb-system
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    {{- end }}
+    {{- range .Values.networkPolicy.allowIngressFrom }}
+    # Allow from {{ .app }} on port {{ .port }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .app }}
+      ports:
+        - protocol: {{ .protocol | default "TCP" }}
+          port: {{ .port }}
+    {{- end }}
+---
+# ── Egress policy ────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "business-app.name" . }}-egress
+  labels:
+    {{- include "business-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "business-app.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Always allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- range .Values.networkPolicy.allowEgressTo }}
+    # Allow to {{ .app }} on port {{ .port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .app }}
+      ports:
+        - protocol: {{ .protocol | default "TCP" }}
+          port: {{ .port }}
+    {{- end }}
+    {{- range .Values.networkPolicy.allowExternalEgress }}
+    # Allow external egress to {{ .description | default "external" }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr }}
+      ports:
+        - protocol: {{ .protocol | default "TCP" }}
+          port: {{ .port }}
+    {{- end }}
+{{- end }}

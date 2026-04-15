@@ -1,0 +1,42 @@
+project_name        = "aks-platform"
+location            = "eastus2"
+environment         = "dev"
+kubernetes_version  = "1.29"
+
+# System pool (ingress, monitoring, kube-system)
+system_node_count   = 3
+system_node_vm_size = "Standard_D4s_v5"
+
+# Standard app pool (most business apps)
+standard_node_min   = 5
+standard_node_max   = 30
+standard_node_vm_size = "Standard_D4s_v5"
+
+# High-memory pool (caches, large APIs)
+highmem_node_min    = 2
+highmem_node_max    = 10
+highmem_node_vm_size = "Standard_E4s_v5"
+
+# Compute pool (batch, data processing) – scales to 0 when idle
+compute_node_min    = 0
+compute_node_max    = 10
+compute_node_vm_size = "Standard_F8s_v2"
+
+# Security — API server access restriction
+# Set to your CI/CD runner IPs, office/VPN ranges, etc.
+api_server_authorized_ips = [
+  # "203.0.113.0/24",   # Office network
+  # "198.51.100.10/32", # GitHub Actions runner
+]
+
+# Networking
+vnet_address_space             = ["10.0.0.0/14"]
+aks_subnet_prefix              = "10.0.0.0/16"
+alb_subnet_prefix              = "10.1.0.0/24"
+private_endpoint_subnet_prefix = "10.1.1.0/24"
+
+tags = {
+  project     = "aks-platform"
+  environment = "dev"
+  managed_by  = "terraform"
+}

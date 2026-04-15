@@ -1,0 +1,19 @@
+{
+    "yaml.schemas": {},
+    "yaml.schemaStore.enable": false,
+    "yaml.customTags": [
+        "!reference sequence"
+    ],
+    "yaml.validate": true,
+    "files.associations": {
+        "**/helm-chart/templates/*.yaml": "helm",
+        "**/helm-chart/templates/*.tpl": "helm"
+    },
+    "[helm]": {
+        "editor.formatOnSave": false
+    },
+    "markdownlint.ignore": [
+        "LICENSE",
+        ".github/CODEOWNERS"
+    ]
+}

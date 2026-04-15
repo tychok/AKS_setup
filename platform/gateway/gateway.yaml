@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════
+# Shared Gateway for the platform
+# ═══════════════════════════════════════════════════════════════
+# A single Gateway serves all business apps. Each app creates an
+# HTTPRoute referencing this Gateway. The ALB Controller reconciles
+# these into Application Gateway for Containers routing rules.
+#
+# Prerequisites:
+#   1. Install cert-manager:
+#      helm install cert-manager jetstack/cert-manager \
+#        --namespace cert-manager --create-namespace \
+#        --set crds.enabled=true
+#   2. Apply this file:
+#      kubectl apply -f platform/gateway/
+# ═══════════════════════════════════════════════════════════════
+
+# ── GatewayClass ─────────────────────────────────────────────
+# Points the Gateway API at the Azure ALB Controller.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: azure-alb-external
+spec:
+  controllerName: alb.networking.azure.io/alb-controller
+---
+# ── ClusterIssuer for Let's Encrypt TLS certificates ─────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v2.api.letsencrypt.org/directory
+    email: platform-team@yourdomain.com # CHANGE: set real email
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: platform-gateway
+                namespace: gateway-system
+                sectionName: http
+---
+# ── Wildcard Certificate ─────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-tls
+  namespace: gateway-system
+spec:
+  secretName: platform-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "*.apps.yourdomain.com" # CHANGE: set real domain
+---
+# ── Shared Gateway ───────────────────────────────────────────
+# One gateway handles HTTP (redirect) + HTTPS for all namespaces.
+# Namespaces must have the label "gateway-access: true" to attach
+# HTTPRoutes (set automatically by the namespace template).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-gateway
+  namespace: gateway-system
+  annotations:
+    alb.networking.azure.io/alb-id: "REPLACE_WITH_ALB_RESOURCE_ID"
+spec:
+  gatewayClassName: azure-alb-external
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: platform-tls
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"
+---
+# ── HTTP → HTTPS redirect ───────────────────────────────────
+# All HTTP traffic is permanently redirected to HTTPS.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: gateway-system
+spec:
+  parentRefs:
+    - name: platform-gateway
+      namespace: gateway-system
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

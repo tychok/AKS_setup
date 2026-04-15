@@ -1,0 +1,34 @@
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/tfplan
+infra/.terraform.lock.hcl
+infra/terraform.tfvars
+
+# .NET
+src/**/bin/
+src/**/obj/
+src/**/*.user
+src/**/*.suo
+
+# Docker
+**/docker-compose.override.yml
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+*.env
+!*.example
