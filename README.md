@@ -93,7 +93,7 @@ Each app gets:  Namespace → ResourceQuota → LimitRange → NetworkPolicy
 │
 ├── .editorconfig                   # Consistent formatting (indent, line endings)
 ├── .pre-commit-config.yaml         # Pre-commit hooks (lint, secret scanning)
-├── LICENSE                         # CC BY 4.0
+├── LICENSE                         # Apache 2.0
 ```
 
 ## Prerequisites
