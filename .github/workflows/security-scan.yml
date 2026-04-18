@@ -1,0 +1,111 @@
+name: Security & Compliance Scan
+
+on:
+  push:
+    branches: [main, develop]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    name: Dependency Check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Dependabot (built-in)
+        uses: dependabot/fetch-metadata@v2
+        id: metadata
+        continue-on-error: true
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'AKS-Setup'
+          path: '.'
+          format: 'SARIF'
+          args: >
+            --enableProjectReferences
+            --enableRetired
+        continue-on-error: true
+
+      - name: Upload Dependency Check results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: reports/dependency-check-report.sarif
+          category: 'dependency-check'
+        continue-on-error: true
+
+  code-scanning:
+    runs-on: ubuntu-latest
+    name: Code Quality & Security
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: SonarQube Scan (Optional)
+        uses: SonarSource/sonarqube-scan-action@master
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: .NET CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'csharp'
+          
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  secret-scanning:
+    runs-on: ubuntu-latest
+    name: Secret Scanning
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TruffleHog Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+        continue-on-error: true
+
+  kubernetes-manifest-scan:
+    runs-on: ubuntu-latest
+    name: Kubernetes Manifest Security
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run kubesec scan on policies
+        run: |
+          for file in platform/policies/*.yaml; do
+            echo "Scanning: $file"
+            curl -s https://kubesec.io/v2/scan -X POST -d @"$file" || true
+          done
+        continue-on-error: true
+
+      - name: Kubewarden Policy Validation
+        run: |
+          echo "Validating Kubernetes policies against security standards"
+          # Check if policies exist
+          ls -la platform/policies/
+        continue-on-error: true

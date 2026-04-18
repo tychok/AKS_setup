@@ -148,6 +148,194 @@ kubectl get pods -A -l app.kubernetes.io/managed-by=Helm
 kubectl get httproute -A
 ```
 
+## Development Workflow & CI/CD
+
+### Local Development
+
+**Setup your development environment:**
+
+```bash
+make dev-setup  # Install tools, setup pre-commit hooks, run initial checks
+```
+
+**Build, test, and validate:**
+
+```bash
+make build-app          # Build .NET application
+make test-app           # Run unit tests
+make lint-all           # Run all linters (Terraform, Helm, YAML)
+make validate-all       # Full validation suite
+```
+
+**Helper commands:**
+
+```bash
+make help              # Show all available commands
+make help-detailed     # Show detailed usage examples
+```
+
+### Pre-Commit Hooks
+
+This project uses **pre-commit** to catch issues before they're committed:
+
+```bash
+make install-pre-commit  # Install hooks
+```
+
+**Hooks run on every commit:**
+
+- ✅ **Terraform**: Format check, validate, TFLint
+- ✅ **Helm**: Lint, template validation
+- ✅ **YAML**: Style validation (yamllint)
+- ✅ **Secrets**: Detect and prevent accidental credential commits (gitleaks, detect-secrets)
+- ✅ **General**: Trailing whitespace, file fixers, merge conflict detection, large file checks
+
+**Skip hooks for a specific commit (if needed):**
+
+```bash
+git commit --no-verify
+```
+
+**Update hooks to latest versions:**
+
+```bash
+make pre-commit-update
+```
+
+### CI/CD Workflows
+
+This project has **6 automated GitHub Actions workflows**:
+
+#### 1. **Build & Test** (`.github/workflows/build-and-test.yml`)
+
+- **Trigger**: Push/PR to `main` or `develop`
+- **Steps**:
+  - .NET build, restore, and test
+  - Docker image build with multi-stage caching
+  - Push image on merge to `main` (tagged with branch, commit, semver)
+
+```bash
+# View logs
+gh workflow view build-and-test
+gh workflow run build-and-test --ref develop
+```
+
+#### 2. **Container Security Scan** (`.github/workflows/container-scan.yml`)
+
+- **Trigger**: Every commit on `main`/`develop`
+- **Scans**:
+  - **Trivy** (aquasecurity) — vulnerability scanning, uploads to GitHub Security tab
+  - **Snyk** (optional) — requires `SNYK_TOKEN` secret
+
+```bash
+trivy image ghcr.io/your-org/sample-api:latest  # Scan locally
+```
+
+#### 3. **Terraform Validation** (`.github/workflows/terraform-validate.yml`)
+
+- **Trigger**: Changes to `infra/`
+- **Checks**:
+  - Format compliance
+  - Syntax validation
+  - **TFLint** — style and best-practice checks
+  - **Checkov** — policy-as-code (security, compliance)
+  - Plans for dev, staging, prod (artifacts uploaded)
+
+```bash
+make tf-validate        # Validate syntax
+make tf-lint            # Run TFLint locally
+make tf-plan ENVIRONMENT=dev  # Generate plan for dev
+```
+
+#### 4. **Helm Validation** (`.github/workflows/helm-validate.yml`)
+
+- **Trigger**: Changes to `platform/helm-chart/`
+- **Checks**:
+  - Helm lint
+  - Template rendering
+  - Dry-run install validation
+  - **Kubesec** security scanning
+  - Kube-score compliance checks
+
+```bash
+make helm-lint           # Lint chart
+make helm-template       # Render templates
+make helm-validate       # Dry-run deployment
+```
+
+#### 5. **Security & Compliance Scan** (`.github/workflows/security-scan.yml`)
+
+- **Trigger**: Daily (2 AM UTC) + on PR
+- **Scans**:
+  - **OWASP Dependency Check** — detect known vulnerable dependencies
+  - **CodeQL** — source code analysis (C#)
+  - **TruffleHog** — secret detection in git history
+  - Kubernetes manifest security checks
+
+#### 6. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
+
+- **Trigger**: Push to `develop` branch
+- **Steps**:
+  - Build & push Docker image
+  - Azure login (requires `AZURE_CREDENTIALS` secret)
+  - Deploy via Helm to AKS
+
+**Requires these GitHub Secrets:**
+
+```
+AZURE_CREDENTIALS          # Service principal JSON (az account set ... | jq)
+AKS_CLUSTER_NAME          # Your AKS cluster name
+AKS_RESOURCE_GROUP        # Your resource group
+```
+
+**Configure secrets:**
+
+```bash
+# Create service principal (if not exists)
+az ad sp create-for-rbac --name "github-actions" \
+  --role Contributor \
+  --scopes /subscriptions/{subscription-id}
+
+# Add to GitHub: Settings → Secrets and variables → Actions
+```
+
+### Infrastructure as Code (Terraform)
+
+**Plan and apply infrastructure changes:**
+
+```bash
+make tf-plan ENVIRONMENT=dev        # Generate plan
+make tf-apply ENVIRONMENT=dev       # Apply plan (confirm interactively)
+make tf-destroy ENVIRONMENT=dev     # Destroy (confirm interactively)
+```
+
+**Supported environments**: `dev`, `staging`, `prod`
+
+### Kubernetes & Helm
+
+**Deploy locally (requires kubectl access):**
+
+```bash
+make helm-lint            # Validate chart
+make helm-validate        # Dry-run deployment
+make helm-install         # Deploy to current cluster
+```
+
+**Pod logs:**
+
+```bash
+make k8s-logs             # Tail logs from sample-api deployment
+```
+
+### Docker
+
+**Build and scan container image:**
+
+```bash
+make build-docker         # Build image locally
+make scan-docker          # Scan with Trivy
+```
+
 ## Key Concepts for 100-App Scale
 
 | Concept | Implementation | Why |

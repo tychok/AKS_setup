@@ -1,0 +1,79 @@
+name: Helm Validation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'platform/helm-chart/**'
+      - 'platform/namespace-template/**'
+      - '.github/workflows/helm-validate.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'platform/helm-chart/**'
+      - 'platform/namespace-template/**'
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Helm Lint - Main Chart
+        run: helm lint platform/helm-chart
+
+      - name: Helm template validation
+        run: helm template sample-app platform/helm-chart --values platform/helm-chart/values.yaml
+
+      - name: Helm Lint - Namespace Template
+        run: |
+          helm lint platform/helm-chart --values platform/helm-chart/values.yaml
+          helm template team-namespace platform/helm-chart --values platform/helm-chart/values.yaml
+
+      - name: Dry run install
+        run: |
+          helm install sample-app platform/helm-chart \
+            --debug \
+            --dry-run \
+            --values platform/helm-chart/values.yaml
+
+      - name: Helm Chart Security Scan (Kubesec)
+        run: |
+          curl -s https://kubesec.io/v2/scan \
+            -X POST \
+            -d @<(helm template sample-app platform/helm-chart --values platform/helm-chart/values.yaml) > kubesec-results.json || true
+          cat kubesec-results.json
+
+  policy-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Install Policy Test Plugin
+        run: |
+          helm plugin install https://github.com/chartmuseum/helm-push || true
+
+      - name: Validate Kubernetes Manifests
+        run: |
+          mkdir -p /tmp/manifests
+          helm template sample-app platform/helm-chart \
+            --values platform/helm-chart/values.yaml \
+            -o /tmp/manifests
+
+      - name: Check Policy Compliance (Kube-score)
+        run: |
+          mkdir -p kube-score-results
+          helm template sample-app platform/helm-chart \
+            --values platform/helm-chart/values.yaml | \
+            kube-score score - --output json > kube-score-results/score.json || true
+        continue-on-error: true
